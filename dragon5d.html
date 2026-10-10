@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>5D Dragon — Open World Fantasy Planet</title>
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#060a18;color:#e8ecff;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif}
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #hud{position:fixed;left:12px;top:10px;font-size:12px;line-height:1.5;background:rgba(5,10,25,.55);padding:8px 10px;border:1px solid rgba(140,170,255,.35);border-radius:8px;pointer-events:none;white-space:pre}
+  #compass{position:fixed;right:12px;top:10px;width:150px;height:150px;background:rgba(5,10,25,.55);border:1px solid rgba(140,170,255,.35);border-radius:8px}
+  #cross{position:fixed;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border:1px solid rgba(255,255,255,.7);border-radius:50%;pointer-events:none}
+  #bar{position:fixed;left:12px;bottom:10px;font-size:12px;background:rgba(5,10,25,.55);padding:8px 10px;border-radius:8px;border:1px solid rgba(140,170,255,.35);max-width:70vw}
+  #title{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(3,6,16,.88);z-index:20}
+  #card{max-width:720px;padding:26px 28px;background:#0b1330;border:1px solid #4a63c8;border-radius:14px;box-shadow:0 10px 60px rgba(0,0,0,.6)}
+  #card h1{margin:0 0 6px;font-size:28px}#card p{font-size:14px;line-height:1.55}
+  #card kbd{background:#1a2450;border:1px solid #556;border-radius:4px;padding:1px 6px;font-size:12px}
+  button{background:#2a3fa0;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-size:15px;cursor:pointer;margin-right:8px}
+  #settings{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(3,6,16,.8);z-index:30}
+  #spanel{background:#0b1330;border:1px solid #4a63c8;border-radius:12px;padding:18px;max-width:640px;max-height:85vh;overflow:auto;font-size:13px}
+  #nogl{display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:#200;font-size:18px;padding:40px;text-align:center}
+  #cpu{display:none;position:fixed;inset:0;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges}
+  #glmode{display:none;position:fixed;right:12px;bottom:10px;font-size:12px;background:rgba(5,10,25,.65);padding:6px 10px;border-radius:8px;border:1px solid rgba(140,170,255,.35);max-width:40vw}
+  .row{display:flex;gap:8px;align-items:center;margin:4px 0}
+  select,input{background:#141c40;color:#fff;border:1px solid #4a63c8;border-radius:6px;padding:4px 8px}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="cpu"></canvas>
+<div id="glmode"></div>
+<div id="hud"></div>
+<canvas id="compass" width="150" height="150"></canvas>
+<div id="cross"></div>
+<div id="bar"></div>
+<div id="nogl"><div>This game could not start — even the 2D-canvas software fallback failed.<br>Please use a recent desktop browser with JavaScript enabled.</div></div>
+<div id="title"><div id="card">
+<h1>🐉 5D Dragon — a whole fantasy planet</h1>
+<p>You are a <b>5-dimensional dragon</b>. The world, your body and the camera all live in R⁵ <b>(x,y,z,w,v)</b>.
+What you see is the <b>3D slice</b> through your position spanned by your <b>right / up / forward</b> axes. Turn into
+<b>w</b> and <b>v</b> and the same landscape <b>morphs</b>: mountains rise, oceans part, towers and dungeons appear and vanish.</p>
+<p><b>Move</b> <kbd>Z</kbd><kbd>S</kbd> fwd/back · <kbd>Q</kbd><kbd>D</kbd> strafe · <kbd>Space</kbd><kbd>Shift</kbd> up/down ·
+<kbd>A</kbd><kbd>E</kbd> hidden-A ∓/± · <kbd>W</kbd><kbd>X</kbd> hidden-B ∓/± &nbsp;(physical keys, AZERTY labels shown)</p>
+<p><b>Look</b> mouse = yaw/pitch · <kbd>←</kbd><kbd>→</kbd> roll ·
+hold <kbd>F</kbd>+mouseX/mouseY/wheel = tilt slice into <b>w-hidden</b> (right-A / up-A / fwd-A) ·
+hold <kbd>G</kbd> = same into <b>v-hidden</b> · hold <kbd>F</kbd>+<kbd>G</kbd>+mouseX = hidden-hidden spin ·
+<kbd>R</kbd> re-align · <kbd>T</kbd> ghost slices · hold <kbd>H</kbd> dimension-sense · <kbd>C</kbd> camera · <kbd>B</kbd> home beacon · <kbd>Esc</kbd> settings</p>
+<p style="opacity:.8">Seed in URL <b>?seed=…</b>, position saved live in <b>#hash</b> — send the URL to a friend to share a place, including hidden w/v. Find the <b>runes</b>: they only glow near phase-locked secrets.</p>
+<p style="opacity:.8">No WebGL2 required — the game auto-uses WebGL2, WebGL1, or a built-in software renderer.</p>
+<div><button id="play">Enter the planet ▸</button><button id="playLow">Enter (low GPU)</button></div>
+</div></div>
+<div id="settings"><div id="spanel">
+<h2 style="margin:0 0 8px">Settings — Esc to close</h2>
+<div class="row"><label>Quality</label><select id="q"><option value="high">high</option><option value="med" selected>medium</option><option value="low">low</option></select>
+<label>Layout</label><select id="lay"><option value="azerty" selected>AZERTY labels</option><option value="qwerty">QWERTY labels</option></select>
+<label>Ghost</label><select id="gh"><option value="1" selected>on</option><option value="0">off</option></select></div>
+<div class="row"><label>Seed</label><input id="seed" size="10"><button id="reseed">respawn</button>
+<button id="home">set home</button><button id="goto">go home</button><button id="realign">re-align (R)</button></div>
+<div id="binds"></div>
+<p style="opacity:.75">All 10 rotation planes + 5 translations are live. Re-orthonormalization (Gram–Schmidt) runs every frame so the 5×5 dragon frame never drifts.</p>
+</div></div>
+<script>
+"use strict";
+/* ================= 0. CONFIG / BINDINGS (event.code, works AZERTY+QWERTY) ================ */
+const Q = new URLSearchParams(location.search);
+let SEED = (parseInt(Q.get("seed")||"20260",10)>>>0) || 20260;
+const BIND = { // action -> event.code
+  fwd:"KeyZ", back:"KeyS", left:"KeyQ", right:"KeyD",
+  up:"Space", down:"ShiftLeft", aNeg:"KeyA", aPos:"KeyE", bNeg:"KeyW", bPos:"KeyX",
+  modA:"KeyF", modB:"KeyG", sense:"KeyH", ghost:"KeyT", realign:"KeyR", cam:"KeyC", beacon:"KeyB",
+  rollL:"ArrowLeft", rollR:"ArrowRight", settings:"Escape"
+};
+const AZ = {KeyZ:"Z",KeyS:"S",KeyQ:"Q",KeyD:"D",Space:"Space",ShiftLeft:"Shift",KeyA:"A",KeyE:"E",KeyW:"W",KeyX:"X",KeyF:"F",KeyG:"G",KeyH:"H",KeyT:"T",KeyR:"R",KeyC:"C",KeyB:"B",ArrowLeft:"←",ArrowRight:"→",Escape:"Esc"};
+const QW = {KeyZ:"W",KeyS:"S",KeyQ:"A",KeyD:"D",Space:"Space",ShiftLeft:"Shift",KeyA:"Q",KeyE:"E",KeyW:"Z",KeyX:"X",KeyF:"F",KeyG:"G",KeyH:"H",KeyT:"T",KeyR:"R",KeyC:"C",KeyB:"B",ArrowLeft:"←",ArrowRight:"→",Escape:"Esc"};
+let LAYOUT="azerty";
+const lab = c => (LAYOUT==="azerty"?AZ:QW)[c]||c;
+
+/* ================= 1. 5D CORE: P + 5x5 orthonormal R ================= */
+let P = new Float64Array([0,26,0,0,0]);       // x,y,z,w,v
+let Vel = new Float64Array(5);                 // inertial velocity in world frame
+let C = [];                                    // C[col][row], cols: 0 right,1 up,2 fwd,3 A,4 B
+function matId(){ C=[[1,0,0,0,0],[0,1,0,0,0],[0,0,1,0,0],[0,0,0,1,0],[0,0,0,0,1]]; }
+matId();
+// Givens rotation of local frame in plane (a,b) by angle t: C <- C*G
+function givens(a,b,t){
+  const c=Math.cos(t),s=Math.sin(t);
+  for(let r=0;r<5;r++){ const x=C[a][r],y=C[b][r]; C[a][r]=c*x+s*y; C[b][r]=-s*x+c*y; }
+}
+function gramSchmidt(){ // columns orthonormalized in order 0..4
+  const dot=(u,v)=>u[0]*v[0]+u[1]*v[1]+u[2]*v[2]+u[3]*v[3]+u[4]*v[4];
+  for(let i=0;i<5;i++){
+    for(let j=0;j<i;j++){ const d=dot(C[i],C[j]); for(let r=0;r<5;r++) C[i][r]-=d*C[j][r]; }
+    const n=Math.hypot(...C[i])||1; for(let r=0;r<5;r++) C[i][r]/=n;
+  }
+}
+function realignTarget(){ return [[1,0,0,0,0],[0,1,0,0,0],[0,0,1,0,0],[0,0,0,1,0],[0,0,0,0,1]]; }
+let realigning=false;
+function tickRealign(dt){
+  if(!realigning) return;
+  const T=realignTarget(); let done=true;
+  for(let c=0;c<5;c++)for(let r=0;r<5;r++){ const d=T[c][r]-C[c][r]; if(Math.abs(d)>0.002)done=false; C[c][r]+=d*Math.min(1,dt*2.2); }
+  gramSchmidt(); if(done)realigning=false;
+}
+// restore from URL hash #x,y,z,w,v + frame
+(function restore(){
+  try{
+    const h=location.hash.replace(/^#/,"").split(",");
+    if(h.length>=5){ for(let i=0;i<5;i++){const v=parseFloat(h[i]); if(isFinite(v))P[i]=v;} }
+    const s=Q.get("seed"); if(s!==null){document.getElementById("seed").value=s;}
+  }catch(e){}
+  document.getElementById("seed").value=String(SEED);
+})();
+let HOME={p:Array.from(P)};
+function saveHash(){ location.hash = Array.from(P).map(v=>v.toFixed(2)).join(","); }
+setInterval(saveHash, 2000);
+
+/* ================= 2. INPUT ================= */
+const keys={}; let mouseDX=0,mouseDY=0,wheelAcc=0, locked=false;
+addEventListener("keydown",e=>{
+  if(e.code===BIND.settings){ toggleSettings(); return; }
+  if(rebindAction){ BIND[rebindAction]=e.code; rebindAction=null; renderBinds(); e.preventDefault(); return; }
+  keys[e.code]=true;
+  if(e.code===BIND.ghost && !e.repeat){ ghostOn=!ghostOn; document.getElementById("gh").value=ghostOn?"1":"0"; }
+  if(e.code===BIND.cam && !e.repeat){ firstPerson=!firstPerson; }
+  if(e.code===BIND.realign && !e.repeat){ realigning=true; }
+  if(e.code===BIND.beacon && !e.repeat){ beaconOn=!beaconOn; }
+  if(["Space","ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(e.code)) e.preventDefault();
+});
+addEventListener("keyup",e=>{keys[e.code]=false;});
+addEventListener("wheel",e=>{wheelAcc+=Math.sign(e.deltaY);},{passive:true});
+const cv=document.getElementById("gl");
+const cpuCv=document.getElementById("cpu");
+function lockPointer(){ if(!started||locked) return; const el=cpuMode?cpuCv:cv; try{el.requestPointerLock&&el.requestPointerLock();}catch(e){} }
+cv.addEventListener("click",lockPointer);
+cpuCv.addEventListener("click",lockPointer);
+document.addEventListener("pointerlockchange",()=>{locked=!!document.pointerLockElement;});
+document.addEventListener("mousemove",e=>{
+  if(!locked||!started) return;
+  mouseDX+=e.movementX; mouseDY+=e.movementY;
+});
+function toggleSettings(){ const s=document.getElementById("settings"); s.style.display=s.style.display==="flex"?"none":"flex"; }
+
+/* ================= 3. RENDERERS: WebGL2 -> WebGL1 -> CPU fallback ================= */
+// No WebGL2 required: tries WebGL2, then WebGL1 (same 5D shader translated to GLSL ES 1.00),
+// then a pure-CPU 2D-canvas slice renderer (same 5D slice math, reduced detail). Runs anywhere.
+let gl=null, prog=null, U={}, started=false, firstPerson=false, ghostOn=true, beaconOn=false;
+let quality="med", glVer=0, cpuMode=false;
+const canvas=cv;
+function failGL(){ document.getElementById("nogl").style.display="flex"; }
+function setMode(t){ const m=document.getElementById("glmode"); if(m){ m.textContent=t; m.style.display=t?"block":"none"; } }
+const VS=`#version 300 es
+layout(location=0) in vec2 p; out vec2 vUv; void main(){vUv=p; gl_Position=vec4(p,0.,1.);}`;
+const VS1=`attribute vec2 p; varying vec2 vUv; void main(){vUv=p; gl_Position=vec4(p,0.,1.);}`;
+const FS=`#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 o;
+uniform vec4 uPosA; uniform float uPosB;
+uniform vec4 uCamA; uniform float uCamB;
+uniform vec4 uC0a,uC1a,uC2a,uC3a,uC4a; uniform vec4 uC0b; // .x=v-comp of each axis packed? we pass v in uC?b
+uniform float uC0v,uC1v,uC2v,uC3v,uC4v;
+uniform vec4 uDgA; uniform float uDgB;
+uniform float uTime,uSeed,uSteps,uGhost,uSense,uGhostOff,uSea,uSunA;
+uniform vec2 uRes;
+uniform vec3 uSun;
+// ---- helpers for 5D packed as vec4+float
+float d5(vec4 a,float ab, vec4 b,float bb){vec4 d=a-b;float e=ab-bb;return dot(d,d)+e*e;}
+vec4 ax4(int i){ if(i==0)return uC0a; if(i==1)return uC1a; if(i==2)return uC2a; if(i==3)return uC3a; return uC4a; }
+float axv(int i){ if(i==0)return uC0v; if(i==1)return uC1v; if(i==2)return uC2v; if(i==3)return uC3v; return uC4v; }
+float hash14(vec4 p){ vec3 p3=fract(p.xyz*0.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z + p.w*0.1571); }
+float vnoise4(vec4 p){
+  vec4 i=floor(p), f=fract(p); vec4 u=f*f*(3.-2.*f);
+  float n0000=hash14(i), n1000=hash14(i+vec4(1,0,0,0)), n0100=hash14(i+vec4(0,1,0,0)), n1100=hash14(i+vec4(1,1,0,0));
+  float n0001=hash14(i+vec4(0,0,0,1)), n1001=hash14(i+vec4(1,0,0,1)), n0101=hash14(i+vec4(0,1,0,1)), n1101=hash14(i+vec4(1,1,0,1));
+  float n0010=hash14(i+vec4(0,0,1,0)), n1010=hash14(i+vec4(1,0,1,0)), n0110=hash14(i+vec4(0,1,1,0)), n1110=hash14(i+vec4(1,1,1,0));
+  float n0011=hash14(i+vec4(0,0,1,1)), n1011=hash14(i+vec4(1,0,1,1)), n0111=hash14(i+vec4(0,1,1,1)), n1111=hash14(i+vec4(1,1,1,1));
+  float x00=mix(mix(n0000,n1000,u.x),mix(n0100,n1100,u.x),u.y);
+  float x10=mix(mix(n0010,n1010,u.x),mix(n0110,n1110,u.x),u.y);
+  float x01=mix(mix(n0001,n1001,u.x),mix(n0101,n1101,u.x),u.y);
+  float x11=mix(mix(n0011,n1011,u.x),mix(n0111,n1111,u.x),u.y);
+  return mix(mix(x00,x10,u.z),mix(x01,x11,u.z),u.w)*2.-1.;
+}
+float fbm4(vec4 p,int oct){ float a=.5,s=0.,n=0.; for(int i=0;i<6;i++){ if(i>=oct)break; s+=a*vnoise4(p); n+=a; p=p*2.03+vec4(17.3,9.1,5.7,3.3); a*=.5;} return s/n; }
+float terrainH(vec4 q){ // q=(x,z,w,v)
+  vec4 p=q+vec4(uSeed*0.13,0.,uSeed*0.29,0.);
+  float cont=fbm4(p*0.006,4);            // continents, varies along w,v slowly
+  float m=fbm4(p*0.02+7.,3);             // mountains
+  float d=fbm4(p*0.055+13.,2);           // detail
+  float h=cont*34.+m*m*46.+d*4.-6.;
+  return h;
+}
+float biome(vec4 q){ return fbm4(q*0.0025+vec4(0.,0.,31.,47.),2)*.5+.5; } // 0 dry .. 1 lush
+// hashed 5D cell 0..1
+float cellHash(vec4 c){ return fract(sin(dot(c,vec4(127.1,311.7,74.7,269.5))+uSeed*0.731)*43758.5453); }
+float sdCaps(vec4 p4,float pv, vec4 a4,float av, vec4 b4,float bv, float r){
+  vec4 pa=p4-a4; float pa5=pv-av; vec4 ba=b4-a4; float ba5=bv-av;
+  float h=clamp((dot(pa,ba)+pa5*ba5)/max(1e-5,(dot(ba,ba)+ba5*ba5)),0.,1.);
+  vec4 d=pa-ba*h; float e=pa5-ba5*h; return sqrt(dot(d,d)+e*e)-r;
+}
+// dragon SDF in world 5D. dragon frame == camera frame (C), centre uDg.
+float dragonSDF(vec4 p4,float pv, out float emiss){
+  emiss=0.;
+  // local coords q_i = dot(p-dg, axis_i)
+  vec4 dg=p4-uDgA; float dg5=pv-uDgB;
+  float q0=dot(dg,uC0a)+dg5*uC0v, q1=dot(dg,uC1a)+dg5*uC1v, q2=dot(dg,uC2a)+dg5*uC2v;
+  float q3=dot(dg,uC3a)+dg5*uC3v, q4=dot(dg,uC4a)+dg5*uC4v;
+  vec4 Q4=vec4(q0,q1,q2,q3); float Qv=q4;
+  float flap=sin(uTime*7.)*.55;
+  // spine + head + tail (5D capsules, mostly in q0..q2 plane)
+  float d=sdCaps(Q4,Qv, vec4(0.,0.,-1.6,0.),0., vec4(0.,.15,1.4,0.),0., .62);
+  d=min(d, length(vec4(Q4.xyz-vec3(0.,.35,2.1),Q4.w)+vec4(0.,0.,0.,Qv))-0.55); // head approx sphere in 5D
+  d=min(d, sdCaps(Q4,Qv, vec4(0.,0.,-1.6,0.),0., vec4(0.,.5,-4.2,0.),0., .30)); // tail
+  // wings extend into hidden q3,q4 -> slide in/out of slice
+  vec4 wl1=vec4(.3,.3,.4,0.), wl2=vec4(2.8,.6+flap,-.9,1.6); float wv1=0., wv2=1.1;
+  vec4 wr1=vec4(-.3,.3,.4,0.), wr2=vec4(-2.8,.6-flap,-.9,-1.6); float wu1=0., wu2=-1.1;
+  // mirror wings on the other hidden sign for symmetry
+  d=min(d, sdCaps(Q4,Qv, wl1,wv1, wl2,wv2, .16));
+  d=min(d, sdCaps(Q4,Qv, wr1,wu1, wr2,wu2, .16));
+  d=min(d, sdCaps(Q4,Qv, vec4(.3,.3,.4,0.),0., vec4(2.8,.6-flap,-.9,-1.6),-1.1, .16));
+  d=min(d, sdCaps(Q4,Qv, vec4(-.3,.3,.4,0.),0., vec4(-2.8,.6+flap,-.9,1.6),1.1, .16));
+  // horns
+  d=min(d, sdCaps(Q4,Qv, vec4(.2,.7,2.4,0.),0., vec4(.5,1.3,2.0,0.),0., .09));
+  d=min(d, sdCaps(Q4,Qv, vec4(-.2,.7,2.4,0.),0., vec4(-.5,1.3,2.0,0.),0., .09));
+  // eyes glow
+  vec4 e1=vec4(.25,.45,2.5,0.), e2=vec4(-.25,.45,2.5,0.);
+  float de1=sqrt(dot(Q4-e1,Q4-e1)+Qv*Qv), de2=sqrt(dot(Q4-e2,Q4-e2)+Qv*Qv);
+  if(min(de1,de2)<0.16) emiss=3.0;
+  return d;
+}
+// landmark SDF: hashed 5D grid, cell 130. returns dist, mat id, secret glow
+float landmarkSDF(vec4 p4,float pv, out float mat, out float rune){
+  mat=0.; rune=0.;
+  float CS=130.;
+  vec4 cell=floor(vec4(p4.x,p4.z,p4.w,pv)/CS);
+  float h0=cellHash(cell);
+  if(h0>0.72) return 1e5; // empty most cells
+  vec4 ctr=(cell+0.5)*CS;
+  vec4 off=vec4((cellHash(cell+11.)-.5)*70.,0.,(cellHash(cell+23.)-.5)*70.,(cellHash(cell+37.)-.5)*70.);
+  float cx=ctr.x+off.x, cz=ctr.y+off.z, cw=ctr.z+off.w, cvv=ctr.w+(cellHash(cell+51.)-.5)*70.;
+  float type=floor(cellHash(cell+7.)*6.); // 0 tower 1 float island 2 arch 3 stones 4 dungeon 5 phase sanctum
+  float th=terrainH(vec4(cx,cz,cw,cvv));
+  vec4 d4=p4-vec4(cx,th,cz,cw); float dv=pv-cvv;
+  // narrow-window secrets: types 4,5 only solid near their w/v centre
+  if(type>=4.){
+    float win = (type>4.5)? 9. : 16.;
+    float dw=abs(p4.w-cw), dvv=abs(pv-cvv);
+    if(dw>win||dvv>win){
+      // rune hints: small glowing markers at slice edge pointing in
+      vec4 rp=vec4(cx,th+6.,cz,clamp(p4.w,cw-win,cw+win)); float rv=clamp(pv,cvv-win,cvv+win);
+      vec4 dd=p4-rp; float ee=pv-rv;
+      float rd=sqrt(dot(dd,dd)+ee*ee)-1.2;
+      if(rd<4.){ rune=clamp(1.-rd/4.,0.,1.); }
+      return 1e5;
+    }
+  }
+  float d=1e5;
+  if(type<0.5){ // ruined tower
+    vec4 q=p4-vec4(cx,th,cz,cw); float qv=pv-cvv;
+    float rad=length(vec3(q.x,q.z,(q.w+qv)*0.3));
+    float body=max(rad-4.2, abs(q.y-15.)-17.);
+    // cheaper: cylinder
+    body=max(length(vec3(q.x,q.z,(q.w+qv)*.3))-4.2, abs(q.y-15.)-17.);
+    float top=length(vec4(q.x,q.y-34.,q.z,(q.w+qv)*.3))-6.;
+    float bite=length(vec4(q.x-8.,q.y-20.,q.z,q.w+qv))-9.; // ruin bite
+    d=max(body,-bite); d=min(d,top); mat=5.;
+  } else if(type<1.5){ // floating island
+    vec4 q=vec4(p4.x-cx,p4.y-(th+38.),p4.z-cz,p4.w-cw); float qv=pv-cvv;
+    float top=length(vec3(q.x/16.,q.y/7.,q.z/16.))-1.+ (q.w+qv)*(q.w+qv)*0.002;
+    float bot=length(vec3(q.x/9.,(q.y+10.)/12.,q.z/9.))-1.;
+    d=min(top,bot); mat=6.;
+  } else if(type<2.5){ // dragon-skeleton arch (torus approx)
+    vec4 q=vec4(p4.x-cx,p4.y-(th+4.),p4.z-cz,p4.w-cw); float qv=pv-cvv;
+    float R=11., r=1.6;
+    float ring=length(vec2(length(vec3(q.x,q.z,(q.w+qv)*.5))-R, q.y))-r;
+    float ring2=length(vec2(length(vec3(q.x*.6-6.,q.z,(q.w-qv)*.5))-R*.6, q.y-2.))-r*.8;
+    d=min(ring,ring2); mat=7.;
+  } else if(type<3.5){ // standing stones circle
+    d=1e5;
+    for(int k=0;k<5;k++){
+      float a=float(k)/5.*6.2831;
+      vec4 sp=vec4(cx+cos(a)*10., th+3., cz+sin(a)*10., cw); float sv=cvv+sin(a*2.)*6.;
+      vec4 q=p4-sp; float qv=pv-sv;
+      float st=length(vec3(q.x,q.z,(q.w+qv)*.5)/vec3(1.4,3.6,1.4)+vec3(0.,-q.y/3.6+0.,0.));
+      st=(length(vec3(q.x/1.4,(q.y)/3.6,q.z/1.4))-1.)+abs(q.w+qv)*0.05;
+      d=min(d,st*1.4);
+    }
+    mat=8.;
+  } else { // dungeon mound with entrance (dark opening = emissive-none box carved)
+    vec4 q=vec4(p4.x-cx,p4.y-th,p4.z-cz,p4.w-cw); float qv=pv-cvv;
+    float mound=length(vec3(q.x/18.,q.y/10.,q.z/18.))-1.+abs(q.w+qv)*0.01;
+    mound=q.y- (10.-length(vec2(q.x,q.z))/3.) ;
+    float hall=length(vec3(max(abs(vec3(q.x,q.y-3.,q.z))-vec3(3.,3.,8.),0.)))-1.;
+    float room=length(vec4(q.x,q.y-3.,q.z-10.,(q.w+qv)*.4))-5.;
+    d=mound; d=max(d,-min(hall,room)); mat=9.;
+    if(min(hall,room)<1.5) mat=10.;
+  }
+  return d;
+}
+float treesSDF(vec4 p4,float pv, float groundH, out float mat){
+  mat=0.;
+  if(p4.y<groundH-0.5||p4.y>groundH+16.) return 1e5;
+  float CS=11.;
+  vec4 cell=floor(vec4(p4.x,p4.z,p4.w,pv)/CS);
+  float h0=cellHash(cell+3.);
+  if(h0>0.42) return 1e5;
+  vec4 base=(cell+vec4(0.2+0.6*cellHash(cell+5.),0.,0.2+0.6*cellHash(cell+9.),0.2+0.6*cellHash(cell+13.)))*CS;
+  float bx=base.x, bz=base.y, bw=base.z, bv=base.w;
+  float gh=terrainH(vec4(bx,bz,bw,bv));
+  if(gh<uSea-0.5) return 1e5;
+  if(biome(vec4(bx,bz,bw,bv))<0.32) return 1e5;
+  vec4 q=p4-vec4(bx,gh,bz,bw); float qv=pv-bv;
+  float trunk=length(vec3(q.x,q.z,(q.w+qv)*.4))-0.35;
+  trunk=max(trunk,abs(q.y-2.5)-2.5);
+  float leaf=length(vec4(q.x,q.y-6.,q.z,(q.w+qv)*.4))-2.6;
+  if(leaf<trunk){mat=4.;return leaf;} mat=3.; return trunk;
+}
+float mapSDF(vec4 p4,float pv, out float mat, out float emiss, out float rune, bool withDragon){
+  float gh=terrainH(vec4(p4.x,p4.z,p4.w,pv));
+  float dT=(p4.y-gh)*0.85; // heightfield approx
+  float lm,rn; float dL=landmarkSDF(p4,pv,lm,rn);
+  float tm; float dTr=treesSDF(p4,pv,gh,tm);
+  float d=dT; mat=1.; emiss=0.; rune=0.;
+  if(dL<d){d=dL;mat=lm;}
+  if(dTr<d){d=dTr;mat=tm;}
+  if(withDragon){ float e2; float dD=dragonSDF(p4,pv,e2); if(dD<d){d=dD;mat=2.;emiss=e2;} }
+  rune=rn;
+  // water plane handled in marcher
+  return d;
+}
+// march from O along D (both 5D). returns t, mat, pos, emiss
+bool trace(vec4 O4,float Ov, vec4 D4,float Dv, int steps, bool withDragon, out float tHit, out float mHit, out vec4 h4, out float hv, out float emiss, out float rune){
+  float t=0.; float far=520.;
+  // if starting under terrain, lift
+  for(int i=0;i<160;i++){
+    if(i>=steps) break;
+    vec4 p4=O4+D4*t; float pv=Ov+Dv*t;
+    float m,e,r;
+    float d=mapSDF(p4,pv,m,e,r,withDragon);
+    // ocean surface
+    float dw=uSea-p4.y;
+    if(dw>0. && p4.y < terrainH(vec4(p4.x,p4.z,p4.w,pv))+0.5 && dw<abs(d)) { /* handled below */ }
+    if(d<0.12){ tHit=t;mHit=m;h4=p4;hv=pv;emiss=e;rune=r; return true; }
+    // water hit
+    if(D4.y<0. && p4.y<uSea && p4.y-d<uSea){ tHit=t;mHit=20.;h4=vec4(p4.x,uSea,p4.z,p4.w);hv=pv;emiss=0.;rune=0.; return true; }
+    float st=clamp(abs(d)*0.7,0.25,10.);
+    // refine near dragon
+    vec4 dg=p4-uDgA; float dd=sqrt(dot(dg,dg)+(pv-uDgB)*(pv-uDgB));
+    if(dd<12.) st=min(st,0.35);
+    t+=st;
+    if(t>far) break;
+  }
+  // sky / miss: check water plane analytically
+  if(D4.y<-1e-4){
+    float tw=(uSea-O4.y)/D4.y;
+    if(tw>0.&&tw<far){ vec4 p4=O4+D4*tw; float pv=Ov+Dv*tw; if(terrainH(vec4(p4.x,p4.z,p4.w,pv))<uSea){tHit=tw;mHit=20.;h4=p4;hv=pv;emiss=0.;rune=0.;return true;} }
+  }
+  return false;
+}
+vec3 shade(vec4 p4,float pv,float mat,float emiss,float rune, vec4 D4){
+  // terrain base colours
+  float gh=terrainH(vec4(p4.x,p4.z,p4.w,pv));
+  float e=0.9;
+  float hx1=terrainH(vec4(p4.x+e,p4.z,p4.w,pv)), hx0=terrainH(vec4(p4.x-e,p4.z,p4.w,pv));
+  float hz1=terrainH(vec4(p4.x,p4.z+e,p4.w,pv)), hz0=terrainH(vec4(p4.x,p4.z-e,p4.w,pv));
+  float hw1=terrainH(vec4(p4.x,p4.z,p4.w+e,pv)), hw0=terrainH(vec4(p4.x,p4.z,p4.w-e,pv));
+  float hv1=terrainH(vec4(p4.x,p4.z,p4.w,pv+e)), hv0=terrainH(vec4(p4.x,p4.z,p4.w,pv-e));
+  // 5D normal (-dhdx,1,-dhdz,-dhdw,-dhdv)
+  vec4 n4a=vec4(-(hx1-hx0)/(2.*e),1.,-(hz1-hz0)/(2.*e),-(hw1-hw0)/(2.*e)); float n5=-(hv1-hv0)/(2.*e);
+  float il=1./sqrt(dot(n4a,n4a)+n5*n5); n4a*=il; n5*=il;
+  // project onto slice axes for lighting in view space
+  vec3 N=vec3(dot(n4a,uC0a)+n5*uC0v, dot(n4a,uC1a)+n5*uC1v, dot(n4a,uC2a)+n5*uC2v);
+  N=normalize(N+vec3(0.,0.,0.0001));
+  float slope=1.-N.y;
+  float b=biome(vec4(p4.x,p4.z,p4.w,pv));
+  vec3 grass=mix(vec3(.32,.42,.16),vec3(.16,.42,.22),b);
+  vec3 rock=vec3(.42,.38,.34), snow=vec3(.9,.92,.96), sand=vec3(.76,.7,.5);
+  vec3 alb=grass;
+  if(p4.y< uSea+1.2) alb=sand;
+  alb=mix(alb,rock,clamp(slope*2.2,0.,1.));
+  if(p4.y>26.+fbm4(vec4(p4.x,p4.z,p4.w,pv)*0.01,2)*10.) alb=mix(alb,snow,clamp((p4.y-26.)/14.,0.,1.));
+  if(mat==3.) alb=vec3(.35,.25,.15); if(mat==4.) alb=mix(vec3(.1,.35,.12),vec3(.2,.5,.16),b);
+  if(mat==5.) alb=vec3(.5,.48,.55); if(mat==6.) alb=vec3(.36,.44,.2);
+  if(mat==7.) alb=vec3(.88,.86,.8); if(mat==8.) alb=vec3(.55,.55,.6);
+  if(mat==9.) alb=vec3(.4,.36,.3); if(mat==10.) alb=vec3(.05,.04,.08);
+  if(mat==2.) alb=vec3(.62,.16,.2);
+  if(mat==20.){ // water
+    vec3 V=normalize(vec3(D4.x,D4.y,D4.z));
+    float fr=pow(1.-max(0.,-V.y),3.)*.7+.1;
+    vec3 deep=vec3(.02,.18,.32), shal=vec3(.1,.45,.55);
+    alb=mix(deep,shal,fr);
+    float sp=pow(max(0.,dot(reflect(V,vec3(0,1,0)),uSun)),90.);
+    return alb*(0.4+0.6*max(0.,uSun.y))+sp*vec3(1.,.9,.7);
+  }
+  float dif=max(0.,dot(N,uSun))*1.15;
+  float amb=0.35+0.25*N.y;
+  // fake curved-horizon atmosphere handled in fog
+  vec3 col=alb*(amb+dif*vec3(1.,.95,.85));
+  float sp=pow(max(0.,dot(reflect(normalize(vec3(D4.x,D4.y,D4.z)),N),uSun)),24.)*.35;
+  col+=sp*vec3(1.,.95,.8);
+  if(emiss>0.) col+=vec3(1.,.25,.1)*emiss;
+  if(rune>0.) col+=vec3(.4,.9,1.)*rune*2.*(0.6+0.4*sin(uTime*4.));
+  if(uSense>0.5 && rune>0.) col+=vec3(1.,.8,.2)*rune*3.;
+  return col;
+}
+vec3 sky(vec4 D4, float Dv, vec3 base){
+  vec3 V=normalize(vec3(D4.x,D4.y,D4.z));
+  float sd=dot(V,uSun);
+  vec3 day=mix(vec3(.35,.6,.95),vec3(.1,.3,.7),clamp(-V.y*2.,0.,1.));
+  vec3 sunset=vec3(.95,.5,.3)*pow(max(0.,1.-abs(V.y+uSun.y)*2.),2.);
+  vec3 col=mix(day,vec3(.02,.03,.09),clamp(-uSun.y*3.,0.,1.));
+  col+=sunset*0.5*clamp(uSun.y+0.4,0.,1.);
+  col+=vec3(1.,.9,.75)*pow(max(0.,sd),600.)*4.; // sun disc
+  col+=vec3(1.,.85,.6)*pow(max(0.,sd),8.)*.25;  // glow
+  // moons
+  vec3 m1=normalize(vec3(.5,.4,-.6)); vec3 m2=normalize(vec3(-.6,.2,.5));
+  col+=vec3(.8,.85,1.)*smoothstep(.9995,.9999,dot(V,m1))*1.2;
+  col+=vec3(.9,.8,.7)*smoothstep(.9996,.99993,dot(V,m2));
+  // stars at night
+  vec2 sp=V.xz/(V.y+1.5);
+  float st=hash14(vec4(floor(sp*220.),floor(uSeed),0.));
+  if(uSun.y<0.05&&V.y>0.) col+=vec3(.9)*step(.992,st)*(.05-uSun.y)*8.;
+  // clouds: 4D noise advected
+  if(V.y>0.02){
+    vec4 cp=vec4(D4.x/V.y*8.+uTime*.7, D4.z/V.y*8., D4.w/V.y*4., Dv/V.y*4.);
+    float cl=fbm4(cp*0.35,3);
+    float cm=smoothstep(.15,.55,cl)*smoothstep(0.02,0.25,V.y);
+    col=mix(col,vec3(.95,.96,1.),cm*.7);
+  }
+  return col;
+}
+void main(){
+  vec2 uv=(vUv*2.-1.); uv.x*=uRes.x/uRes.y;
+  float f=1.4;
+  // camera basis in 5D
+  vec4 R4=uC0a*uv.x/f+uC1a*uv.y/f+uC2a; float Rv=uC0v*uv.x/f+uC1v*uv.y/f+uC2v;
+  vec4 D4=R4; float Dv=Rv; float il=1./sqrt(dot(D4,D4)+Dv*Dv); D4*=il;Dv*=il;
+  int st=int(uSteps+0.5);
+  float t,m,e,r; vec4 h; float hv;
+  vec3 col;
+  bool hit=trace(uCamA,uCamB,D4,Dv,st,true,t,m,h,hv,e,r);
+  if(hit){
+    col=shade(h,hv,m,e,r,D4);
+    // fog + curved horizon fade
+    float fo=1.-exp(-t/260.);
+    vec3 sk=sky(D4,Dv,col);
+    // fake planet curve: dip horizon
+    col=mix(col,sk,clamp(fo+t*t*1e-7,0.,1.));
+  } else col=sky(D4,Dv,vec3(0));
+  // dimension sense: brighten rune hints
+  if(uSense>0.5 && r>0.01) col+=vec3(1.,.85,.3)*r;
+  // ghost slices: cheap re-march shifted along hidden axes, tinted
+  if(uGhost>0.5){
+    float tg,mg,eg,rg; vec4 hg; float hgv;
+    vec4 O2=uCamA+uC3a*uGhostOff; float Ov2=uCamB+uC3v*uGhostOff;
+    if(trace(O2,Ov2,D4,Dv,28,false,tg,mg,hg,hgv,eg,rg)){
+      vec3 g2=shade(hg,hgv,mg,eg,rg,D4);
+      float fo2=1.-exp(-tg/260.);
+      col=mix(col, g2*vec3(1.25,.85,.6)+vec3(.12,.03,0.), .28*(1.-fo2*.6));
+    }
+    vec4 O3=uCamA+uC4a*uGhostOff; float Ov3=uCamB+uC4v*uGhostOff;
+    if(trace(O3,Ov3,D4,Dv,28,false,tg,mg,hg,hgv,eg,rg)){
+      vec3 g3=shade(hg,hgv,mg,eg,rg,D4);
+      float fo3=1.-exp(-tg/260.);
+      col=mix(col, g3*vec3(.6,.85,1.25)+vec3(0.,.03,.12), .28*(1.-fo3*.6));
+    }
+  }
+  // home beacon
+  o=vec4(pow(max(col,0.),vec3(0.85)),1.);
+}`;
+// WebGL1 build of the same 5D shader (GLSL ES 1.00): `out vec4 o` -> gl_FragColor.
+const FS1=FS.replace("#version 300 es","").replace("in vec2 vUv; out vec4 o;","varying vec2 vUv;").replace("  o=vec4(","  gl_FragColor=vec4(");
+function initGL(){
+  const unis=["uPosA","uPosB","uCamA","uCamB","uC0a","uC1a","uC2a","uC3a","uC4a","uC0b","uC0v","uC1v","uC2v","uC3v","uC4v","uDgA","uDgB","uTime","uSeed","uSteps","uGhost","uSense","uGhostOff","uSea","uSunA","uRes","uSun"];
+  const setup=(vsrc,fsrc,isGL2)=>{
+    const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);
+      if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)){console.error(gl.getShaderInfoLog(o));return null;}return o;};
+    const v=sh(gl.VERTEX_SHADER,vsrc),f=sh(gl.FRAGMENT_SHADER,fsrc);
+    if(!v||!f)return false;
+    prog=gl.createProgram();gl.attachShader(prog,v);gl.attachShader(prog,f);
+    gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(prog));return false;}
+    gl.useProgram(prog);
+    const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+    const loc=isGL2?0:gl.getAttribLocation(prog,"p");
+    gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+    unis.forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+    return true;
+  };
+  try{ gl=canvas.getContext("webgl2",{antialias:false}); }catch(e){ gl=null; }
+  if(gl&&setup(VS,FS,true)){ glVer=2; setMode(""); return true; }
+  gl=null; prog=null;
+  try{ gl=canvas.getContext("webgl",{antialias:false})||canvas.getContext("experimental-webgl",{antialias:false}); }catch(e){ gl=null; }
+  if(gl&&setup(VS1,FS1,false)){ glVer=1; setMode("WebGL1 mode — same 5D world, GLSL ES 1.00"); return true; }
+  gl=null;
+  if(initCPU()){ cpuMode=true; setMode("CPU software mode — same 5D slice, reduced detail (no WebGL available)"); return true; }
+  failGL(); return false;
+}
+/* ---- CPU fallback: the same 5D slice (origin + dx*right+dy*up+dz*forward, marched in R^5),
+   evaluated in JS against the heightfield and painted on a 2D canvas. ---- */
+let cpuCtx=null, cpuImg=null, cpuW=0, cpuH=0, cpuCool=0;
+function initCPU(){
+  try{
+    cpuCtx=cpuCv.getContext("2d");
+    if(!cpuCtx) return false;
+    canvas.style.display="none"; cpuCv.style.display="block";
+    return true;
+  }catch(e){ return false; }
+}
+function renderCPU(){
+  const now=performance.now();
+  if(now-cpuCool<120) return; // ~8fps cap; flight/HUD/compass still run full-rate
+  cpuCool=now;
+  const bw=quality==="high"?220:quality==="med"?176:132;
+  const bh=Math.max(54,Math.round(bw*innerHeight/Math.max(1,innerWidth)));
+  if(cpuCv.width!==bw||cpuCv.height!==bh){ cpuCv.width=bw; cpuCv.height=bh; cpuImg=null; }
+  if(!cpuImg||cpuW!==bw||cpuH!==bh){ cpuImg=cpuCtx.createImageData(bw,bh); cpuW=bw; cpuH=bh; }
+  const cp=camPos(), sun=sunNow;
+  const R0=C[0],R1=C[1],R2=C[2];
+  const asp=bw/bh, f=1.4, sea=2.0, d=cpuImg.data;
+  for(let y=0;y<bh;y++){
+    const uy=((bh-1-y)/bh*2-1)/f;
+    for(let x=0;x<bw;x++){
+      const ux=(x/bw*2-1)*asp/f;
+      let Dx=R0[0]*ux+R1[0]*uy+R2[0], Dy=R0[1]*ux+R1[1]*uy+R2[1], Dz=R0[2]*ux+R1[2]*uy+R2[2];
+      let Dw=R0[3]*ux+R1[3]*uy+R2[3], Dv=R0[4]*ux+R1[4]*uy+R2[4];
+      const il=1/Math.sqrt(Dx*Dx+Dy*Dy+Dz*Dz+Dw*Dw+Dv*Dv);
+      Dx*=il;Dy*=il;Dz*=il;Dw*=il;Dv*=il;
+      let t=0, gHit=1e9, wat=false;
+      for(let s=0;s<22;s++){
+        if(t>420) break;
+        const px=cp[0]+Dx*t, py=cp[1]+Dy*t, pz=cp[2]+Dz*t, pw=cp[3]+Dw*t, pv=cp[4]+Dv*t;
+        const g=jsGround(px,pz,pw,pv);
+        const dh=py-g;
+        if(dh<0.3){ gHit=g; break; }
+        if(Dy<0&&py<sea&&g<sea){ gHit=g; wat=true; break; }
+        t+=Math.max(0.6,Math.min(24,dh*0.55));
+      }
+      let r,g2,b;
+      if(gHit<1e8&&!wat){
+        const hx=cp[0]+Dx*t, hz=cp[2]+Dz*t, hw=cp[3]+Dw*t, hv=cp[4]+Dv*t;
+        const e=1.2;
+        const gx=(jsGround(hx+e,hz,hw,hv)-jsGround(hx-e,hz,hw,hv))/(2*e);
+        const gz=(jsGround(hx,hz+e,hw,hv)-jsGround(hx,hz-e,hw,hv))/(2*e);
+        const nl=1/Math.sqrt(gx*gx+1+gz*gz);
+        const dif=Math.max(0,(-gx*nl)*sun[0]+nl*sun[1]+(-gz*nl)*sun[2]);
+        const hy=cp[1]+Dy*t;
+        let cr=0.24,cg=0.36,cb=0.16;
+        if(hy<sea+1.2){cr=0.72;cg=0.66;cb=0.46;}
+        else if(hy>30){cr=0.88;cg=0.9;cb=0.94;}
+        else if(nl<0.75){cr=0.42;cg=0.38;cb=0.34;}
+        const fo=(1-Math.exp(-t/260))*0.55;
+        const sh=(0.45+0.75*dif)*(1-fo);
+        r=cr*sh+fo*0.45; g2=cg*sh+fo*0.6; b=cb*sh+fo*1.0;
+      } else if(gHit<1e8&&wat){
+        const fo=1-Math.exp(-t/260);
+        r=0.03+fo*0.2; g2=0.2+fo*0.3; b=0.36+fo*0.55;
+      } else {
+        const day=Math.max(0,sun[1]);
+        r=(0.25+0.25*Dy)*(0.25+0.75*day)+0.02;
+        g2=(0.45+0.25*Dy)*(0.25+0.75*day)+0.02;
+        b=0.85*(0.25+0.75*day)+0.05;
+        if(Dx*sun[0]+Dy*sun[1]+Dz*sun[2]>0.998){ r+=1.5; g2+=1.2; b+=0.9; }
+      }
+      const o=(y*bw+x)*4;
+      d[o]=r*255>255?255:r*255; d[o+1]=g2*255>255?255:g2*255; d[o+2]=b*255>255?255:b*255; d[o+3]=255;
+    }
+  }
+  cpuCtx.putImageData(cpuImg,0,0);
+  drawCompass();
+}
+
+/* ================= 4. MAIN LOOP: flight + rotations ================= */
+let lastT=performance.now(), elapsed=0, fpsA=60, resScale=0.75;
+function worldAxesCols(){ return C; }
+function camPos(out4){ // third/first person
+  const f=C[2],u=C[1];
+  let d = firstPerson? 0.6 : -7.0, h = firstPerson? 0.4 : 2.6;
+  const o=[P[0]+f[0]*d+u[0]*h, P[1]+f[1]*d+u[1]*h, P[2]+f[2]*d+u[2]*h, P[3]+f[3]*d+u[3]*h, P[4]+f[4]*d+u[4]*h];
+  return o;
+}
+function update(dt){
+  // --- rotations: mouse ---
+  const sens=0.0026;
+  let mdx=mouseDX, mdy=mouseDY; mouseDX=0; mouseDY=0;
+  const fA=keys[BIND.modA], fB=keys[BIND.modB];
+  if(locked&&(mdx||mdy)){
+    if(fA&&fB){ givens(3,4,mdx*sens*1.4); }                       // A-B plane (hidden-hidden)
+    else if(fA){ givens(0,3,mdx*sens*1.4); givens(1,3,mdy*sens*1.2); } // right-A, up-A
+    else if(fB){ givens(0,4,mdx*sens*1.4); givens(1,4,mdy*sens*1.2); } // right-B, up-B
+    else { givens(0,2,-mdx*sens); givens(1,2,-mdy*sens); }            // yaw, pitch
+  }
+  const w=wheelAcc; wheelAcc=0;
+  if(w!==0){
+    if(fA&&!fB) givens(2,3,w*0.09);       // forward-A via wheel
+    else if(fB&&!fA) givens(2,4,w*0.09);  // forward-B via wheel
+    else if(fA&&fB) givens(3,4,w*0.09);
+    else { // throttle speed
+      speedMul=Math.min(4,Math.max(0.25,speedMul*(w>0?1.15:0.87)));
+    }
+  }
+  if(keys[BIND.rollL]) givens(0,1,dt*1.4);
+  if(keys[BIND.rollR]) givens(0,1,-dt*1.4);
+  // keyboard hidden-plane nudges (so all 10 planes work without a mouse too)
+  if(fA&&keys[BIND.left])givens(0,3,dt*1.2); if(fA&&keys[BIND.right])givens(0,3,-dt*1.2);
+  if(fA&&keys[BIND.fwd])givens(2,3,dt*1.2);
+  if(fB&&keys[BIND.left])givens(0,4,dt*1.2); if(fB&&keys[BIND.right])givens(0,4,-dt*1.2);
+  if(fB&&keys[BIND.fwd])givens(2,4,dt*1.2);
+  if(fA&&fB&&(keys[BIND.up]))givens(3,4,dt*1.2);
+  tickRealign(dt);
+  gramSchmidt();
+  // --- translations along 5 local axes, inertial ---
+  const acc=42*speedMul;
+  const ax=(i,s)=>{ for(let r=0;r<5;r++) Vel[r]+=C[i][r]*s*acc*dt; };
+  if(keys[BIND.fwd])ax(2,1); if(keys[BIND.back])ax(2,-1);
+  if(keys[BIND.right])ax(0,1); if(keys[BIND.left])ax(0,-1);
+  if(keys[BIND.up])ax(1,1); if(keys[BIND.down])ax(1,-1);
+  if(keys[BIND.aPos])ax(3,1); if(keys[BIND.aNeg])ax(3,-1);
+  if(keys[BIND.bPos])ax(4,1); if(keys[BIND.bNeg])ax(4,-1);
+  // flap bob
+  const flap=Math.sin(elapsed*7)*0.6;
+  for(let r=0;r<5;r++) P[r]+=Vel[r]*dt;
+  P[1]+=flap*dt*1.2*C[1][1];
+  for(let r=0;r<5;r++) Vel[r]*=Math.exp(-dt*1.6); // drag => glide/hover
+  // soft terrain collision (sample height approx on CPU? cheap analytic mirror)
+  // we approximate ground with JS noise-lite: keep dragon above h+1.2 using shader-independent estimate
+  const g=jsGround(P[0],P[2],P[3],P[4]);
+  if(P[1]<g+1.4){ P[1]=g+1.4; if(Vel[1]<0)Vel[1]*=-0.25; for(let r=0;r<5;r++)Vel[r]*=0.985; }
+  if(P[1]>160){P[1]=160;Vel[1]=Math.min(0,Vel[1]);}
+}
+// tiny JS mirror of terrainH (2 octaves value noise) for collision only
+function hhash(x,z,w,v){ const s=Math.sin(x*127.1+z*311.7+w*74.7+v*269.5+SEED*0.731)*43758.5453; return (s-Math.floor(s))*2-1; }
+function vnoiseJ(x,z,w,v){
+  const xi=Math.floor(x),zi=Math.floor(z),wi=Math.floor(w),vi=Math.floor(v);
+  let xf=x-xi,zf=z-zi,wf=w-wi,vf=v-vi;
+  const u=t=>t*t*(3-2*t); xf=u(xf);zf=u(zf);wf=u(wf);vf=u(vf);
+  let res=0;
+  for(let a=0;a<2;a++)for(let b=0;b<2;b++)for(let c=0;c<2;c++)for(let d=0;d<2;d++){
+    const wx=a?xf:1-xf, wz=b?zf:1-zf, ww=c?wf:1-wf, wv=d?vf:1-vf;
+    res+=hhash(xi+a,zi+b,wi+c,vi+d)*wx*wz*ww*wv;
+  }
+  return res;
+}
+function jsGround(x,z,w,v){
+  const s=0.006, s2=0.02;
+  const c=(vnoiseJ(x*s+SEED*0.13,z*s,w*s+SEED*0.29,v*s)+vnoiseJ(x*s*2.03+9,z*s*2.03,w*s*2.03,v*s*2.03)*0.5)/1.5;
+  const m=(vnoiseJ(x*s2+7,z*s2,w*s2,v*s2));
+  return c*34+m*m*46-6;
+}
+let speedMul=1;
+let sunAng=0.6;
+let sunNow=[0,1,0];
+function frame(now){
+  if(!started){requestAnimationFrame(frame);return;}
+  let dt=Math.min(0.05,(now-lastT)/1000); lastT=now; elapsed+=dt;
+  fpsA=fpsA*0.95+(1/Math.max(1e-3,dt))*0.05;
+  // adaptive resolution
+  if(fpsA<45&&resScale>0.4){resScale-=0.05;} else if(fpsA>57&&resScale<1){resScale+=0.02;}
+  sunAng+=0.008/60; // slow day-night
+  { const s=[Math.cos(sunAng),Math.sin(sunAng)*0.9+0.15,0.35]; const l=1/Math.hypot(s[0],s[1],s[2]); sunNow=[s[0]*l,s[1]*l,s[2]*l]; }
+  update(dt);
+  if(cpuMode) renderCPU(); else render();
+  hud();
+  requestAnimationFrame(frame);
+}
+function render(){
+  const W=Math.floor(innerWidth*resScale), H=Math.floor(innerHeight*resScale);
+  if(canvas.width!==W||canvas.height!==H){canvas.width=W;canvas.height=H;gl.viewport(0,0,W,H);}
+  const sun=sunNow;
+  const cp=camPos();
+  gl.useProgram(prog);
+  gl.uniform4f(U.uPosA,P[0],P[1],P[2],P[3]); gl.uniform1f(U.uPosB,P[4]);
+  gl.uniform4f(U.uCamA,cp[0],cp[1],cp[2],cp[3]); gl.uniform1f(U.uCamB,cp[4]);
+  gl.uniform4f(U.uC0a,C[0][0],C[0][1],C[0][2],C[0][3]); gl.uniform1f(U.uC0v,C[0][4]);
+  gl.uniform4f(U.uC1a,C[1][0],C[1][1],C[1][2],C[1][3]); gl.uniform1f(U.uC1v,C[1][4]);
+  gl.uniform4f(U.uC2a,C[2][0],C[2][1],C[2][2],C[2][3]); gl.uniform1f(U.uC2v,C[2][4]);
+  gl.uniform4f(U.uC3a,C[3][0],C[3][1],C[3][2],C[3][3]); gl.uniform1f(U.uC3v,C[3][4]);
+  gl.uniform4f(U.uC4a,C[4][0],C[4][1],C[4][2],C[4][3]); gl.uniform1f(U.uC4v,C[4][4]);
+  gl.uniform4f(U.uDgA,P[0],P[1],P[2],P[3]); gl.uniform1f(U.uDgB,P[4]);
+  gl.uniform1f(U.uTime,elapsed); gl.uniform1f(U.uSeed,SEED%1000);
+  gl.uniform1f(U.uSteps,quality==="high"?110:quality==="med"?76:46);
+  gl.uniform1f(U.uGhost,ghostOn?1:0); gl.uniform1f(U.uSense,keys[BIND.sense]?1:0);
+  gl.uniform1f(U.uGhostOff,10.0); gl.uniform1f(U.uSea,2.0); gl.uniform1f(U.uSunA,sunAng);
+  gl.uniform2f(U.uRes,canvas.width,canvas.height); gl.uniform3f(U.uSun,sun[0],sun[1],sun[2]);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  drawCompass();
+}
+/* ---- HUD + 5-axis compass gizmo ---- */
+const hudEl=document.getElementById("hud"), barEl=document.getElementById("bar"), cmp=document.getElementById("compass").getContext("2d");
+const AXN=["x →","y ↑","z","w (hidA)","v (hidB)"], AXC=["#f66","#6f6","#69f","#fc3","#3cf"];
+function proj(e){ // world axis e (5D unit) into camera space
+  let X=0,Y=0,Z=0; for(let r=0;r<5;r++){X+=e[r]*C[0][r];Y+=e[r]*C[1][r];Z+=e[r]*C[2][r];}
+  return [X,Y,Z];
+}
+function drawCompass(){
+  const g=cmp; g.clearRect(0,0,150,150); g.fillStyle="rgba(0,0,0,0)";g.fillRect(0,0,150,150);
+  g.strokeStyle="rgba(160,180,255,.4)";g.strokeRect(0.5,0.5,149,149);
+  g.font="10px sans-serif";
+  for(let i=0;i<5;i++){
+    const e=[0,0,0,0,0];e[i]=1; const [X,Y,Z]=proj(e);
+    const s=Z>0.05?1:(Z<-0.05?-0.35:0.15);
+    const x=75+X*52*s, y=75-Y*52*s;
+    g.strokeStyle=AXC[i];g.fillStyle=AXC[i];g.beginPath();g.moveTo(75,75);g.lineTo(x,y);g.stroke();
+    g.beginPath();g.arc(x,y,3,0,7);g.fill();
+    g.fillText(AXN[i]+(Z<0?" ·":""),Math.min(120,Math.max(4,x+4)),y);
+  }
+  if(beaconOn){ // arrow to home in slice-projected direction
+    const d=[HOME.p[0]-P[0],HOME.p[1]-P[1],HOME.p[2]-P[2],HOME.p[3]-P[3],HOME.p[4]-P[4]];
+    let X=0,Y=0,Z=0;for(let r=0;r<5;r++){X+=d[r]*C[0][r];Y+=d[r]*C[1][r];Z+=d[r]*C[2][r];}
+    const n=Math.hypot(X,Y,Z)||1;
+    g.strokeStyle="#ffd75e";g.lineWidth=2;g.beginPath();g.moveTo(75,75);g.lineTo(75+X/n*60,75-Y/n*60);g.stroke();g.lineWidth=1;
+    g.fillStyle="#ffd75e";g.fillText("HOME "+Math.hypot(...d).toFixed(0)+"m",60,140);
+  }
+}
+let hudT=0;
+function hud(){
+  const now=performance.now(); if(now-hudT<150)return; hudT=now;
+  hudEl.textContent=`DRAGON  x ${P[0].toFixed(1)}  y ${P[1].toFixed(1)}  z ${P[2].toFixed(1)}  w ${P[3].toFixed(1)}  v ${P[4].toFixed(1)}\nseed ${SEED}  ${cpuMode?"CPU-soft":glVer===1?"WebGL1":"WebGL2"}  ${firstPerson?"1st-person":"3rd-person"}  ${ghostOn?"ghosts on":"ghosts off"}  ${keys[BIND.sense]?"SENSE ◉":"sense "+lab(BIND.sense)}  fps ${fpsA.toFixed(0)}  res ${(resScale*100)|0}%`;
+  barEl.innerHTML=`<b>${lab(BIND.fwd)}/${lab(BIND.back)}</b> fly · <b>${lab(BIND.left)}/${lab(BIND.right)}</b> strafe · <b>Space/Shift</b> up/down · <b>${lab(BIND.aNeg)}/${lab(BIND.aPos)}</b> w · <b>${lab(BIND.bNeg)}/${lab(BIND.bPos)}</b> v · mouse look · hold <b>${lab(BIND.modA)}/${lab(BIND.modB)}</b> + mouse/wheel = bend slice into 4D/5D · <b>${lab(BIND.realign)}</b> re-align · click canvas for mouse-lock`;
+}
+/* ---- settings / rebind ---- */
+let rebindAction=null;
+function renderBinds(){
+  const acts=[["fwd","fly forward"],["back","fly back"],["left","strafe left"],["right","strafe right"],["up","fly up"],["down","fly down"],["aNeg","hiddenA −"],["aPos","hiddenA +"],["bNeg","hiddenB −"],["bPos","hiddenB +"],["modA","bend-into-A modifier"],["modB","bend-into-B modifier"],["sense","dimension sense (hold)"],["ghost","ghost layers"],["realign","re-align"],["cam","camera"],["beacon","home beacon"],["rollL","roll left"],["rollR","roll right"]];
+  document.getElementById("binds").innerHTML=acts.map(([a,d])=>`<div class="row"><span style="width:190px">${d}</span><button data-a="${a}">${lab(BIND[a])} (${BIND[a]}) — rebind</button></div>`).join("");
+  document.querySelectorAll("#binds button").forEach(b=>b.onclick=()=>{rebindAction=b.dataset.a;b.textContent="press a key…";});
+}
+document.getElementById("q").onchange=e=>quality=e.target.value;
+document.getElementById("gh").onchange=e=>ghostOn=e.target.value==="1";
+document.getElementById("lay").onchange=e=>{LAYOUT=e.target.value;renderBinds();};
+document.getElementById("reseed").onclick=()=>{SEED=parseInt(document.getElementById("seed").value||"1",10)>>>0;history.replaceState(null,"","?seed="+SEED);P=Float64Array.from([0,26,0,0,0]);Vel=Float64Array.from([0,0,0,0,0]);matId();};
+document.getElementById("home").onclick=()=>HOME={p:Array.from(P)};
+document.getElementById("goto").onclick=()=>{for(let i=0;i<5;i++)P[i]=HOME.p[i];Vel.fill(0);};
+document.getElementById("realign").onclick=()=>realigning=true;
+renderBinds();
+/* ---- boot ---- */
+document.getElementById("play").onclick=()=>boot("med");
+document.getElementById("playLow").onclick=()=>boot("low");
+function boot(q){ quality=q;document.getElementById("q").value=q;document.getElementById("title").style.display="none"; if(!gl&&!cpuMode&&!initGL())return; started=true; lastT=performance.now(); lockPointer(); }
+addEventListener("resize",()=>{});
+requestAnimationFrame(function kick(t){ lastT=t; requestAnimationFrame(frame); });
+</script>
+</body>
+</html>
